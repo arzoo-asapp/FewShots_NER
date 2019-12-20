@@ -19,7 +19,7 @@ UNK = "__UNK__"
 
 class SpanDataset(Dataset):
     
-    def __init__(self, file_data, token_to_id, id_to_token, tag_to_id, id_to_tag, setname='train', test_cls={'B-PERSON', 'I-PERSON'}, valid_cls={'B-FAC', 'I-FAC'}):
+    def __init__(self, file_data, token_to_id, id_to_token, tag_to_id, id_to_tag, setname='train', test_cls={'PERSON', 'PERSON'}, valid_cls={'FAC', 'FAC'}):
         '''
         Args:
         fname: str, training data file
@@ -78,64 +78,101 @@ class SpanDataset(Dataset):
                 else:
                     labels.append(tag_to_id['O'])'''
 
+        
         data_sent_id = []
+        data_sent_id_dict = dict()
         data_token = []                                                                                              
-        data_sentence = []                                                                                           
-        data_label = []                                                                                              
+        data_sentence = []
+        data_sentence_label = []
+        data_sentence_bert_label = []
+        
+        data_label = []
         
         for j, data in enumerate(file_data):
             #print(data)
             #for lines in data:
             #    print(lines)
-            sentence, tags = data
+            sentence, tags, bert_embeddings = data
 
-            segments = get_segments(tags)
-            #print(segments)
-
-            dict_segments = dict()
-            for segment in segments:
-                start_id, end_id, label = segment
-                dict_segments[str(start_id)+"|"+str(end_id-1)] = label
-            
             sent_token_id = []
             counting_spans = 0
-            for i, (token, tag) in enumerate(zip(sentence, tags)):
-                sent_token_id.append(token_to_id.get(simplify_token(token).lower(), 1))
-                for k in np.arange(i+1):
-                    #data_token.append([token_to_id.get(simplify_token(sentence[k].lower()), 1), token_to_id.get(simplify_token(sentence[i].lower()), 1)])
-                    counting_spans += 1
-                    data_token.append([k, i])
-                    #sent_token_id.append(token_to_id.get(simplify_token(token).lower(), 1))
-                    data_sent_id.append(j)
-                    #Here remove all the tags which are not in the dev set or the test set!!!
-                    if (setname == 'train' and tag not in test_cls and tag not in valid_cls)\
-                       or (setname == 'dev' and tag in valid_cls)\
-                       or (setname == 'test' and tag in test_cls):
-                        if str(k)+"|"+str(i) in dict_segments.keys():
-                            data_label.append(tag_to_id[tag])
-                        else:
-                            data_label.append(tag_to_id["O"])
-                        #if setname=='dev' and tag in valid_cls:
-                        #    print(i, token, tag)
-                    else:
-                        #if setname=='dev':
-                        #    print(i, token, tag, tag_to_id["O"])
-                        data_label.append(tag_to_id["O"])
-            for i in np.arange(counting_spans):
-                data_sentence.append(sent_token_id)
-                
+            #print(dict_segments)
+            #print(len(segments))
+            added_sentence = 0
 
+            sent_label = []
+            sent_bert_label = []
+            
+            for i, (token, tag, bert_emb) in enumerate(zip(sentence, tags, bert_embeddings)):
+                if "B-" in tag or "I-" in tag:
+                    tag = tag[2:]
+                sent_token_id.append(token_to_id.get(simplify_token(token).lower(), 1))
+                #for k in np.arange(i+1):
+                    #data_token.append([token_to_id.get(simplify_token(sentence[k].lower()), 1), token_to_id.get(simplify_token(sentence[i].lower()), 1)])
+                #    if i-k > 4:
+                #        continue
+                counting_spans += 1
+                data_token.append([i, i])
+                #sent_token_id.append(token_to_id.get(simplify_token(token).lower(), 1))
+                data_sent_id.append(j)
+                sent_bert_label.append(bert_emb)
+                    #Here remove all the tags which are not in the dev set or the test set!!!
+                if (setname == 'train' and tag not in test_cls and tag not in valid_cls)\
+                        or (setname == 'dev' and tag in valid_cls)\
+                        or (setname == 'test' and tag in test_cls):
+                    #if str(k)+"|"+str(i) in dict_segments.keys():
+                    data_label.append(tag_to_id[tag])
+                    #print(j)
+                    sent_label.append(tag_to_id[tag])
+                    
+                    #print(str(tag)+"--"+str(k)+"--"+str(i))
+                    #print("---")
+                    #num_added += 1
+                    added_sentence += 1
+                else:
+                    data_label.append(tag_to_id["O"])
+                    ######Changed here to include all the annotations!!!
+                    sent_label.append(tag_to_id[tag])
+                #if setname=='dev' and tag in valid_cls:
+                #print(i, token, tag)
+            
+            data_sent_id_dict[j] = np.arange(len(data_sentence)-1, len(data_sentence)-1+1)
+            #for token in sentence:
+            data_sentence.append(sent_token_id)
+            data_sentence_label.append(sent_label)
+            data_sentence_bert_label.append(sent_bert_label)
+            #print(added_sentence)
+            #print("~~~~")
+        
         self.id_to_token = id_to_token
         self.token_to_id = token_to_id
         self.id_to_tag = id_to_tag
         self.tag_to_id = tag_to_id
         self.data_sentence = data_sentence
+        self.data_sentence_label = data_sentence_label
+        self.data_sentence_bert_label = data_sentence_bert_label
         self.data_token = data_token
         self.data_label = data_label
+
+        '''for (l, id1) in zip(data_label, data_sent_id):
+            print(str(l)+"\t"+str(id1))
+        
+        indices = np.argwhere(np.array(data_label) == tag_to_id["ORG"]).reshape(-1)
+        print(tag_to_id["ORG"])
+        print(indices)
+        #print(c)
+        #print(indices)
+        max_sent_id = data_sent_id[indices[299]]
+        print(max_sent_id)'''
+        
         self.data_sent_id = data_sent_id
+        self.data_sent_id_dict = data_sent_id_dict
         #print(len([x > 0 for x in data_label]))
         #print([x > 0 for x in data_label])
         print("Non zero")
+        '''print(num_added)
+        print(test_cls)
+        print(valid_cls)'''
         print(np.count_nonzero(data_label))
         
     def __len__(self):
@@ -143,4 +180,4 @@ class SpanDataset(Dataset):
 
 
     def __getitem__(self, i):
-        return self.data_sentence[i], self.data_token[i], self.data_label[i], self.data_sent_id[i]
+        return self.data_sentence, self.data_sentence_label, self.data_token[i], self.data_sentence_bert_label, self.data_label[i], self.data_sent_id[i], self.data_sent_id_dict
